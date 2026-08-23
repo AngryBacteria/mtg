@@ -6,6 +6,9 @@ dist/
 build/
 out/
 *.tsbuildinfo
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 
 # Test output
 coverage/
