@@ -4,10 +4,10 @@ import { defineConfig } from "vite";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), babel({ presets: [reactCompilerPreset()] })],
-  server: {
-    proxy: {
-      "/trpc": "http://localhost:3000",
-    },
-  },
+	plugins: [react(), babel({ presets: [reactCompilerPreset()] })],
+	server: {
+		proxy: {
+			"/trpc": "http://localhost:3000",
+		},
+	},
 });

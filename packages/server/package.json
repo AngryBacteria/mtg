@@ -4,13 +4,13 @@
 	"version": "0.0.0",
 	"type": "module",
 	"exports": {
-		"./router": "./src/router.ts"
+		"./router": "./src/routers/router.ts"
 	},
 	"engines": {
 		"node": ">=24.0.0"
 	},
 	"scripts": {
-		"dev": "tsx watch src/index.ts",
+		"dev": "tsx watch --env-file=.env src/index.ts",
 		"db:update": "drizzle-kit push",
 		"db:open": "drizzle-kit studio",
 		"build": "tsc -p tsconfig.json",

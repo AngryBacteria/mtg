@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { check, index, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
+/** Database table containing the imported Scryfall cards. */
 export const cards = sqliteTable(
 	"cards",
 	{
