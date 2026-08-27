@@ -13,7 +13,9 @@ const trpcClient = trpc.createClient({
 });
 
 /** Defines application-wide Mantine component defaults and design tokens. */
-const theme = createTheme({});
+const theme = createTheme({
+	primaryColor: 'teal'
+});
 
 const root = document.getElementById("root");
 
