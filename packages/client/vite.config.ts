@@ -2,7 +2,7 @@ import babel from "@rolldown/plugin-babel";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// https://vite.dev/config/
+/** Enables React compilation and proxies local tRPC requests to the backend server. */
 export default defineConfig({
 	plugins: [react(), babel({ presets: [reactCompilerPreset()] })],
 	server: {

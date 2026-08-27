@@ -17,27 +17,27 @@ const envSchema = z.object({
 
 const env = envSchema.parse(process.env);
 
-/** Returns the port on which the HTTP server should listen. */
+/** Reads the validated port on which the HTTP server should listen. */
 export function getServerPort(): number {
 	return env.PORT;
 }
 
-/** Returns whether the server is running in production mode. */
+/** Reports whether the validated runtime environment is production. */
 export function getIsProduction(): boolean {
 	return env.NODE_ENV === "production";
 }
 
-/** Returns the configured Pino log level, if one was provided. */
+/** Reads the optional validated Pino log-level override. */
 export function getLogLevel(): string | undefined {
 	return env.LOG_LEVEL;
 }
 
-/** Returns the configured SQLite database file name. */
+/** Reads the validated SQLite file name used to open the application database. */
 export function getDatabaseFileName(): string {
 	return env.DB_FILE_NAME;
 }
 
-/** Returns whether the default Scryfall cards should be imported at startup. */
+/** Reports whether startup should launch the default Scryfall card import. */
 export function getDownloadDefaultCardsOnStartup(): boolean {
 	return env.DOWNLOAD_DEFAULT_CARDS_ON_STARTUP;
 }

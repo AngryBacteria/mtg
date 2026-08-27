@@ -1,6 +1,6 @@
 # Coding Guidelines
 
-- Add simple JSDoc to all exported and non-trivial functions and vairables. Trivial callbacks do not require JSDoc.
+- Add short JSDoc to all exported and non-trivial functions and variables. Describe what the code does or represents, including important behavior, inputs, or outputs; do not merely restate the function or variable name. Trivial callbacks do not require JSDoc.
 - Prioritize readability and developer experience over reducing line count or writing overly compact code.
 - Prefer descriptive names and straightforward control flow over clever abstractions.
 - Add enough logs to make application behavior and failures easy to understand.

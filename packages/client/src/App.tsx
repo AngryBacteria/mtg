@@ -1,6 +1,7 @@
 import "./App.css";
 import { trpc } from "./trpc.ts";
 
+/** Renders the backend greeting with loading, retryable error, and success states. */
 function App() {
 	const greeting = trpc.greeting.useQuery();
 

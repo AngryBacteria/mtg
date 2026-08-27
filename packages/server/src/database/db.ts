@@ -4,5 +4,5 @@ import { getDatabaseFileName } from "../utils/process.js";
 
 const sqlite = new DatabaseSync(getDatabaseFileName());
 
-/** Shared Drizzle database client. */
+/** Provides queries against the configured SQLite database through Drizzle. */
 export const db = drizzle({ client: sqlite });

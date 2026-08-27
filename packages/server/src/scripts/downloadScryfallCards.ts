@@ -25,10 +25,10 @@ const scryfallCardSchema = z.object({
 	collector_number: z.string(),
 });
 
-/** Card fields retained from each Scryfall bulk-data record. */
+/** Contains the identity fields retained from a validated Scryfall card record. */
 export type ScryfallCard = z.infer<typeof scryfallCardSchema>;
 
-/** Validates the metadata returned by Scryfall's bulk-data endpoint. */
+/** Returns validated Scryfall download metadata, or logs and skips invalid data. */
 function parseBulkData(data: unknown): BulkData | undefined {
 	const result = bulkDataSchema.safeParse(data);
 	if (result.success) {
@@ -42,7 +42,7 @@ function parseBulkData(data: unknown): BulkData | undefined {
 	return undefined;
 }
 
-/** Parses and validates one JSONL record from a Scryfall bulk download. */
+/** Returns a validated card from one JSONL record, or logs and skips bad input. */
 export function parseScryfallCard(line: string): ScryfallCard | undefined {
 	try {
 		const result = scryfallCardSchema.safeParse(JSON.parse(line));
@@ -64,7 +64,7 @@ export function parseScryfallCard(line: string): ScryfallCard | undefined {
 	return undefined;
 }
 
-/** Fetches and decodes a JSON response. */
+/** Fetches JSON from a URL and rejects unsuccessful HTTP responses. */
 async function getJson(url: string): Promise<unknown> {
 	const response = await fetch(url, {
 		headers: {
@@ -82,7 +82,7 @@ async function getJson(url: string): Promise<unknown> {
 	return response.json();
 }
 
-/** Streams the default-card dataset and passes each valid card to a handler. */
+/** Streams Scryfall's default-card file and sends each valid record to a handler. */
 export async function downloadAndParseDefaultCards(
 	handleCard: (card: ScryfallCard) => void | Promise<void>,
 ): Promise<{ count: number; updatedAt: string }> {
@@ -133,7 +133,7 @@ export async function downloadAndParseDefaultCards(
 	return result;
 }
 
-/** Downloads the default Scryfall cards and inserts them into the database. */
+/** Downloads Scryfall's default cards and inserts them in database-sized batches. */
 export async function importDefaultCards(): Promise<{
 	count: number;
 	updatedAt: string;
@@ -141,7 +141,7 @@ export async function importDefaultCards(): Promise<{
 	logger.info("importDefaultCards: import started");
 	const batch: (typeof cards.$inferInsert)[] = [];
 
-	/** Writes the current card batch and clears it after the values are captured. */
+	/** Inserts the queued cards, then empties the batch for subsequent records. */
 	const writeBatch = async (): Promise<void> => {
 		if (batch.length === 0) {
 			return;

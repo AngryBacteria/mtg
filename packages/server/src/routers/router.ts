@@ -3,7 +3,7 @@ import { cardsRouter } from "./cards.js";
 
 const t = initTRPC.create();
 
-/** Root tRPC router exposed by the backend. */
+/** Combines the backend's card lookup and health-check-style greeting procedures. */
 export const appRouter = t.router({
 	cards: cardsRouter,
 	greeting: t.procedure.query(() => ({
@@ -12,5 +12,5 @@ export const appRouter = t.router({
 	})),
 });
 
-/** Public type used by tRPC clients to infer the backend API. */
+/** Describes the complete backend API for end-to-end tRPC type inference. */
 export type AppRouter = typeof appRouter;

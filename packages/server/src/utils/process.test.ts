@@ -12,7 +12,7 @@ const originalEnvironment = Object.fromEntries(
 	environmentVariableNames.map((name) => [name, process.env[name]]),
 );
 
-/** Imports the process utility after forcing its environment snapshot to refresh. */
+/** Reloads the process utility so each test reads its newly stubbed environment. */
 async function importProcessUtility() {
 	vi.resetModules();
 	return import("./process.js");

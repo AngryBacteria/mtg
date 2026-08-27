@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { check, index, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-/** Database table containing the imported Scryfall cards. */
+/** Stores the searchable identity fields of cards imported from Scryfall. */
 export const cards = sqliteTable(
 	"cards",
 	{

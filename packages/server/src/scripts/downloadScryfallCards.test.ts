@@ -32,7 +32,7 @@ const bulkData = {
 	compressed_size: 123,
 };
 
-/** Creates a successful response containing gzipped JSONL data. */
+/** Wraps JSONL records in a successful response with a gzipped stream body. */
 function createGzipResponse(lines: readonly string[]): Response {
 	const compressedData = gzipSync(lines.join("\n"));
 	const body = new ReadableStream<Uint8Array>({
@@ -44,7 +44,7 @@ function createGzipResponse(lines: readonly string[]): Response {
 	return new Response(body, { status: 200 });
 }
 
-/** Configures fetch to return valid metadata followed by a bulk download. */
+/** Mocks the two Scryfall requests with metadata followed by gzipped card data. */
 function mockScryfallResponses(
 	lines: readonly string[],
 ): ReturnType<typeof vi.fn> {

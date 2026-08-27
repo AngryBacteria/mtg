@@ -3,7 +3,7 @@ import Fastify from "fastify";
 import { appRouter } from "../routers/router.js";
 import { logger } from "./logger.js";
 
-/** Builds and configures the backend HTTP server. */
+/** Creates a Fastify server with request logging and the tRPC API mounted at `/trpc`. */
 export function buildFastifyServer() {
 	const fastifyServer = Fastify({
 		logger: false,

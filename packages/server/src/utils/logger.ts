@@ -15,7 +15,7 @@ const loggerOptions = !getIsProduction()
 		}
 	: {};
 
-/** Shared structured logger for the backend. */
+/** Emits backend logs at the configured level, with readable output outside production. */
 export const logger = pino({
 	level: logLevel,
 	base: {

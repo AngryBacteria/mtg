@@ -8,7 +8,7 @@ import {
 
 const SERVER_HOST = "0.0.0.0";
 
-/** Starts the HTTP server and optional background card import. */
+/** Starts the HTTP server and, when configured, imports cards in the background. */
 async function main(): Promise<void> {
 	const server = buildFastifyServer();
 	const port = getServerPort();

@@ -18,7 +18,7 @@ const parseCardsInputSchema = z.object({
 	format: z.string().min(1),
 });
 
-/** Builds card lookup conditions from parsed fields. */
+/** Converts the available parsed fields into exact database match conditions. */
 function buildCardConditions(parsedFields: ParsedCardFields): SQL[] {
 	const conditions: SQL[] = [];
 	if (parsedFields.name !== undefined) {
@@ -33,7 +33,7 @@ function buildCardConditions(parsedFields: ParsedCardFields): SQL[] {
 	return conditions;
 }
 
-/** Card lookup procedures exposed by the backend. */
+/** Exposes the API procedure that parses card lines and returns database matches. */
 export const cardsRouter = t.router({
 	parse: t.procedure
 		.input(parseCardsInputSchema)

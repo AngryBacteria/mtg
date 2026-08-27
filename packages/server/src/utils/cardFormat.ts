@@ -1,11 +1,13 @@
-/** Field names supported by card-line format placeholders. */
+/** Lists the placeholders that may extract values from an input card line. */
 const cardFieldNames = ["amount", "collectorNumber", "name", "set"] as const;
 type CardFieldName = (typeof cardFieldNames)[number];
+
+/** Maps each field captured from a card line to its trimmed text value. */
 export type ParsedCardFields = Partial<Record<CardFieldName, string>>;
 
 const placeholderPattern = /\{([^{}]*)\}/gu;
 
-/** Returns the capture pattern appropriate for a card field. */
+/** Returns a lazy capture pattern that allows spaces in names but not in other fields. */
 function cardFieldPattern(field: CardFieldName): string {
 	if (field !== "name") {
 		return "\\S+?";
@@ -14,17 +16,17 @@ function cardFieldPattern(field: CardFieldName): string {
 	return ".+?";
 }
 
-/** Escapes text so it can be safely included in a regular expression. */
+/** Escapes regular-expression syntax so a format's literal text matches verbatim. */
 function escapeRegularExpression(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Converts literal whitespace in a card format to flexible whitespace matching. */
+/** Turns literal format text into a pattern that tolerates whitespace differences. */
 function formatLiteralAsPattern(value: string): string {
 	return escapeRegularExpression(value).replace(/\s+/g, "\\s+");
 }
 
-/** Validates and converts a literal format segment to a regular expression. */
+/** Rejects braces, escapes regex syntax, and lets whitespace match one or more spaces. */
 function compileLiteral(value: string): string {
 	if (value.includes("{") || value.includes("}")) {
 		throw new Error("Format contains malformed braces");
@@ -32,13 +34,13 @@ function compileLiteral(value: string): string {
 	return formatLiteralAsPattern(value);
 }
 
-/** Compiled representation of a card-line format. */
+/** Holds an anchored line-matching pattern and the fields it captures in order. */
 export interface CompiledCardFormat {
 	fields: readonly CardFieldName[];
 	pattern: RegExp;
 }
 
-/** Compiles a format whose card fields use braced placeholders such as `{name}`. */
+/** Converts a placeholder template such as `{amount} {name}` into a card-line matcher. */
 export function compileCardFormat(format: string): CompiledCardFormat {
 	const fields: CardFieldName[] = [];
 	let pattern = "^\\s*";
@@ -74,7 +76,7 @@ export function compileCardFormat(format: string): CompiledCardFormat {
 	return { fields, pattern: new RegExp(pattern, "iu") };
 }
 
-/** Parses one card line according to a compiled card format. */
+/** Extracts trimmed field values when a line fully matches the compiled template. */
 export function parseCardLine(
 	line: string,
 	format: CompiledCardFormat,
