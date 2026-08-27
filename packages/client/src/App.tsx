@@ -1,36 +1,31 @@
-import "./App.css";
-import { trpc } from "./trpc.ts";
+import { AppShell, Container, Group, Text, Title } from "@mantine/core";
 
-/** Renders the backend greeting with loading, retryable error, and success states. */
+/** Renders the application's reusable header, content, and footer layout. */
 function App() {
-	const greeting = trpc.greeting.useQuery();
-
 	return (
-		<main>
-			<p className="eyebrow">tRPC + TanStack React Query</p>
-			<h1>Server response</h1>
+		<AppShell header={{ height: 64 }} footer={{ height: 48 }} padding="md">
+			<AppShell.Header>
+				<Container h="100%" size="lg">
+					<Group h="100%" justify="space-between">
+						<Title order={2}>MTG</Title>
+					</Group>
+				</Container>
+			</AppShell.Header>
 
-			{greeting.isPending && <p className="status">Loading…</p>}
+			<AppShell.Main>
+				<Container size="lg" />
+			</AppShell.Main>
 
-			{greeting.isError && (
-				<div className="status error" role="alert">
-					<p>Could not fetch the greeting.</p>
-					<small>{greeting.error.message}</small>
-					<button type="button" onClick={() => void greeting.refetch()}>
-						Try again
-					</button>
-				</div>
-			)}
-
-			{greeting.isSuccess && (
-				<div className="result">
-					<p>{greeting.data.message}</p>
-					<small>
-						Fetched at {new Date(greeting.data.fetchedAt).toLocaleString()}
-					</small>
-				</div>
-			)}
-		</main>
+			<AppShell.Footer>
+				<Container h="100%" size="lg">
+					<Group h="100%">
+						<Text c="dimmed" size="sm">
+							MTG
+						</Text>
+					</Group>
+				</Container>
+			</AppShell.Footer>
+		</AppShell>
 	);
 }
 
