@@ -116,7 +116,6 @@ export async function downloadAndParseDefaultCards(
 		if (line.length === 0) {
 			continue;
 		}
-		console.log(line);
 
 		const card = parseScryfallCard(line);
 		if (card === undefined) {
