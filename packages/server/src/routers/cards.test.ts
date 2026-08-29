@@ -46,6 +46,7 @@ describe("cardsRouter", () => {
 				set: "mh2",
 			},
 		]);
+		expect(result.matches[0]).not.toHaveProperty("json");
 	});
 
 	it("returns parsed details for unmatched inputs", async () => {

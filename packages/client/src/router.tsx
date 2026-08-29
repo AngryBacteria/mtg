@@ -5,7 +5,7 @@ import {
 	Navigate,
 } from "@tanstack/react-router";
 import App from "./App.tsx";
-import { PrintBleedUploader } from "./components/PrintBleedUploader.tsx";
+import { PrintBleedUploaderPage } from "./pages/PrintBleedUploaderPage.tsx";
 import { DecklistParserPage } from "./pages/DecklistParserPage.tsx";
 
 /**
@@ -30,7 +30,7 @@ const indexRoute = createRoute({
 const imagesRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/images",
-	component: PrintBleedUploader,
+	component: PrintBleedUploaderPage,
 });
 
 /**

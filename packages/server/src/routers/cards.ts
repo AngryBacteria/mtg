@@ -43,16 +43,27 @@ const parseCsvInputSchema = z.object({
 });
 
 /**
+ * Minimal printing identity returned to the client for a database match.
+ *
+ * The complete Scryfall JSON remains server-side because the matching interface
+ * only needs these fields to display and select primary or alternative printings.
+ */
+type MatchedCard = Pick<
+	typeof cards.$inferSelect,
+	"collectorNumber" | "id" | "name" | "set"
+>;
+
+/**
  * Successful lookup for one submitted entry.
  *
  * `inputIndex` points to the original non-blank input order. The first row sorted
  * by Scryfall ID is the deterministic primary result and all remaining candidates
  * are retained in `otherMatches`. Amount is copied from input when supplied.
  */
-type CardSearchResult = typeof cards.$inferSelect & {
+type CardSearchResult = MatchedCard & {
 	amount?: string;
 	inputIndex: number;
-	otherMatches: (typeof cards.$inferSelect)[];
+	otherMatches: MatchedCard[];
 };
 
 /**
@@ -89,7 +100,12 @@ async function findMatchingCards(
 		parsedCards.map((parsedFields) => {
 			const conditions = buildCardConditions(parsedFields);
 			return db
-				.select()
+				.select({
+					collectorNumber: cards.collectorNumber,
+					id: cards.id,
+					name: cards.name,
+					set: cards.set,
+				})
 				.from(cards)
 				.where(and(...conditions))
 				.orderBy(cards.id);

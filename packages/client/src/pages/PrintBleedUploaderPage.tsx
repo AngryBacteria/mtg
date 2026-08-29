@@ -77,7 +77,7 @@ interface ImagePreview {
  * object URLs are revoked, and batch failures remain visible without clearing the
  * user's selections or settings.
  */
-export function PrintBleedUploader() {
+export function PrintBleedUploaderPage() {
 	const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
 	const [isProcessing, setIsProcessing] = useState(false);
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);

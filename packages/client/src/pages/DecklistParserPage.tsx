@@ -5,6 +5,7 @@ import {
 	Group,
 	Paper,
 	Select,
+	SimpleGrid,
 	Stack,
 	Table,
 	Tabs,
@@ -14,13 +15,16 @@ import {
 } from "@mantine/core";
 import { useState } from "react";
 import { trpc } from "../trpc.ts";
+import {
+	type CsvCardField,
+	inferCsvColumnMapping,
+	parseCsvHeader,
+	textFormatPresets,
+} from "../utils/decklistInput.ts";
 import { logger } from "../utils/logger.ts";
 
 /** Default placeholder layout for one card per line in the text workflow. */
 const DEFAULT_TEXT_FORMAT = "{amount} {name} ({set}) {collectorNumber}";
-
-/** Example input demonstrating the syntax expected by the default text format. */
-const TEXT_DECKLIST_EXAMPLE = "1 Sol Ring (cmm) 396\n2 Island (dmu) 278";
 
 /**
  * Domain fields that users may associate with CSV headers.
@@ -34,9 +38,6 @@ const csvCardFields = [
 	{ label: "Set code", value: "set" },
 	{ label: "Collector number", value: "collectorNumber" },
 ] as const;
-
-/** Normalized card identity or quantity field accepted by the CSV API. */
-type CsvCardField = (typeof csvCardFields)[number]["value"];
 
 /** Minimal printing identity displayed for a database match. */
 type MatchedCard = {
@@ -86,6 +87,9 @@ export function DecklistParserPage() {
 		Partial<Record<CsvCardField, string>>
 	>({});
 	const [parseResult, setParseResult] = useState<CardParseResult | null>(null);
+	const selectedTextFormatPreset = textFormatPresets.find(
+		(preset) => preset.format === textFormat,
+	);
 
 	const parseTextMutation = trpc.cards.parseText.useMutation({
 		onSuccess: (result) => {
@@ -165,11 +169,7 @@ export function DecklistParserPage() {
 		const nextHeaders = parseCsvHeader(csv);
 		setCsvHeaders(nextHeaders);
 		setCsvColumns((currentColumns) =>
-			Object.fromEntries(
-				Object.entries(currentColumns).filter(([, header]) =>
-					nextHeaders.includes(header),
-				),
-			),
+			inferCsvColumnMapping(nextHeaders, currentColumns),
 		);
 		setParseResult(null);
 		parseCsvMutation.reset();
@@ -216,6 +216,16 @@ export function DecklistParserPage() {
 
 					<Tabs.Panel value="text">
 						<Stack>
+							<Select
+								data={textFormatPresets.map((preset) => ({
+									label: `${preset.label} — ${preset.example}`,
+									value: preset.format,
+								}))}
+								label="Format preset"
+								onChange={(value) => value && setTextFormat(value)}
+								placeholder="Custom format"
+								value={selectedTextFormatPreset ? textFormat : null}
+							/>
 							<Textarea
 								description="Available placeholders: {amount}, {name}, {set}, {collectorNumber}"
 								label="Line format"
@@ -225,9 +235,13 @@ export function DecklistParserPage() {
 							<Textarea
 								autosize
 								label="Decklist"
+								maxRows={12}
 								minRows={8}
 								onChange={(event) => setTextDecklist(event.currentTarget.value)}
-								placeholder={TEXT_DECKLIST_EXAMPLE}
+								placeholder={
+									selectedTextFormatPreset?.example ??
+									"Enter one card per line using the custom format above"
+								}
 								value={textDecklist}
 							/>
 							<Button
@@ -253,6 +267,7 @@ export function DecklistParserPage() {
 							<Textarea
 								autosize
 								label="CSV data"
+								maxRows={12}
 								minRows={7}
 								onChange={(event) =>
 									updateCsvDecklist(event.currentTarget.value)
@@ -312,32 +327,46 @@ export function DecklistParserPage() {
  * The server's first match is displayed by default. When alternatives exist,
  * selection is tracked by original input index so two identical input lines can
  * independently choose different printings without mutating the server result.
+ * Users can remove matched rows from the current client-side result; summary
+ * counts are derived from the remaining rows and no database records are changed.
  *
  * @param result - Matches and unmatched inputs produced by either parsing API.
  */
 function CardResults({ result }: { result: CardParseResult }) {
+	const [matches, setMatches] = useState(result.matches);
 	const [selectedCardIds, setSelectedCardIds] = useState<
 		Record<number, string>
 	>({});
-	const { matches, unmatched } = result;
+	const { unmatched } = result;
+	const inputCardCount = matches.length + unmatched.length;
+	const totalMatchedCardCount = matches.reduce(
+		(total, card) => total + parseCardAmount(card.amount),
+		0,
+	);
 
 	return (
 		<Stack gap="md">
 			<Paper p="md" radius="lg" withBorder>
+				<SimpleGrid cols={{ base: 1, sm: 3 }} mb="lg" spacing="md">
+					<CardCount label="Cards input" value={inputCardCount} />
+					<CardCount label="Cards found" value={matches.length} />
+					<CardCount label="Total cards found" value={totalMatchedCardCount} />
+				</SimpleGrid>
 				<Title mb="sm" order={2} size="h3">
-					{matches.length} matching {matches.length === 1 ? "card" : "cards"}
+					Matching cards
 				</Title>
 				{matches.length === 0 ? (
 					<Text c="dimmed">No exact card matches were found.</Text>
 				) : (
-					<Table.ScrollContainer minWidth={560}>
-						<Table striped highlightOnHover>
+					<Table.ScrollContainer maxHeight="50vh" minWidth={640}>
+						<Table striped highlightOnHover stickyHeader>
 							<Table.Thead>
 								<Table.Tr>
 									<Table.Th>Amount</Table.Th>
 									<Table.Th>Name</Table.Th>
 									<Table.Th>Set</Table.Th>
 									<Table.Th>Collector number</Table.Th>
+									<Table.Th>Actions</Table.Th>
 								</Table.Tr>
 							</Table.Thead>
 							<Table.Tbody>
@@ -374,6 +403,23 @@ function CardResults({ result }: { result: CardParseResult }) {
 											</Table.Td>
 											<Table.Td>{selectedCard.set.toUpperCase()}</Table.Td>
 											<Table.Td>{selectedCard.collectorNumber}</Table.Td>
+											<Table.Td>
+												<Button
+													aria-label={`Delete ${selectedCard.name} from results`}
+													color="red"
+													onClick={() =>
+														setMatches((currentMatches) =>
+															currentMatches.filter(
+																(match) => match.inputIndex !== card.inputIndex,
+															),
+														)
+													}
+													size="compact-xs"
+													variant="subtle"
+												>
+													Delete
+												</Button>
+											</Table.Td>
 										</Table.Tr>
 									);
 								})}
@@ -398,6 +444,32 @@ function CardResults({ result }: { result: CardParseResult }) {
 	);
 }
 
+/** Displays one aggregate from the latest parsing and matching operation. */
+function CardCount({ label, value }: { label: string; value: number }) {
+	return (
+		<Paper bg="var(--mantine-color-default-hover)" p="sm" radius="md">
+			<Text c="dimmed" size="sm">
+				{label}
+			</Text>
+			<Text fw={700} size="xl">
+				{value}
+			</Text>
+		</Paper>
+	);
+}
+
+/**
+ * Converts optional quantity metadata into the number of physical matched cards.
+ *
+ * Plain integer quantities and common suffixes such as `2x` use their leading
+ * integer. A missing, malformed, or negative quantity represents one card,
+ * matching the natural meaning of a decklist entry without an amount column.
+ */
+function parseCardAmount(amount: string | undefined): number {
+	if (amount === undefined || !/^\d+/u.test(amount)) return 1;
+	return Number.parseInt(amount, 10);
+}
+
 /**
  * Formats the fields recovered from an unmatched input for user-facing feedback.
  *
@@ -418,50 +490,4 @@ function formatParsedCardFields(
 	]
 		.filter(Boolean)
 		.join(" ");
-}
-
-/**
- * Extracts non-empty column names from the first RFC 4180-style CSV record.
- *
- * Quoted commas and escaped quotes are decoded, line breaks inside quoted values
- * remain part of the header, surrounding whitespace is trimmed, and a UTF-8 BOM
- * is removed from the first column. Parsing stops after the first unquoted line
- * break because later records cannot contribute mapping choices.
- *
- * This lightweight client parser exists only to populate mapping controls; the
- * server remains responsible for validating and parsing the complete document.
- *
- * @param csv - Complete or partial CSV text supplied by the user.
- * @returns Header names in source order with blank columns removed.
- */
-function parseCsvHeader(csv: string): string[] {
-	const header: string[] = [];
-	let value = "";
-	let insideQuotes = false;
-
-	for (let index = 0; index < csv.length; index += 1) {
-		const character = csv[index];
-		if (character === '"') {
-			if (insideQuotes && csv[index + 1] === '"') {
-				value += '"';
-				index += 1;
-			} else {
-				insideQuotes = !insideQuotes;
-			}
-		} else if (character === "," && !insideQuotes) {
-			header.push(value.trim());
-			value = "";
-		} else if ((character === "\n" || character === "\r") && !insideQuotes) {
-			break;
-		} else {
-			value += character;
-		}
-	}
-
-	if (value.length > 0 || header.length > 0) header.push(value.trim());
-	return header
-		.map((column, index) =>
-			index === 0 ? column.replace(/^\uFEFF/u, "") : column,
-		)
-		.filter(Boolean);
 }

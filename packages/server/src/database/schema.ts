@@ -2,7 +2,9 @@ import { sql } from "drizzle-orm";
 import { check, index, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 /**
- * Complete Scryfall card payload retained for API responses and future features.
+ * Complete Scryfall card payload retained for database-backed features.
+ * API queries should select only the fields required by their clients rather
+ * than returning this comparatively large object by default.
  * Required searchable properties are enforced separately by generated columns.
  */
 export type ScryfallCardJson = Record<string, unknown>;
