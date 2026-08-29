@@ -18,14 +18,14 @@ const bulkDataSchema = z.object({
 
 type BulkData = z.infer<typeof bulkDataSchema>;
 
-const scryfallCardSchema = z.object({
+const scryfallCardSchema = z.looseObject({
 	id: z.string(),
 	name: z.string(),
 	set: z.string(),
 	collector_number: z.string(),
 });
 
-/** Contains the identity fields retained from a validated Scryfall card record. */
+/** Contains a complete Scryfall card record with validated identity fields. */
 export type ScryfallCard = z.infer<typeof scryfallCardSchema>;
 
 /** Returns validated Scryfall download metadata, or logs and skips invalid data. */
@@ -156,9 +156,7 @@ export async function importDefaultCards(): Promise<{
 	const result = await downloadAndParseDefaultCards(async (card) => {
 		batch.push({
 			id: card.id,
-			name: card.name,
-			set: card.set,
-			collectorNumber: card.collector_number,
+			json: card,
 		});
 		if (batch.length >= 100) {
 			await writeBatch();

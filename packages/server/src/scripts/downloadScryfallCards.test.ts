@@ -70,7 +70,7 @@ afterEach(() => {
 });
 
 describe("parseScryfallCard", () => {
-	it("returns the retained fields from a valid card record", () => {
+	it("returns the complete JSON object from a valid card record", () => {
 		expect(
 			parseScryfallCard(
 				JSON.stringify({
@@ -86,6 +86,7 @@ describe("parseScryfallCard", () => {
 			name: "Black Lotus",
 			set: "lea",
 			collector_number: "232",
+			ignored: "value",
 		});
 	});
 
@@ -184,6 +185,7 @@ describe("importDefaultCards", () => {
 				name: `Card ${index}`,
 				set: "tst",
 				collector_number: String(index),
+				image_uris: { normal: `https://example.com/card-${index}.jpg` },
 			}),
 		);
 		mockScryfallResponses(records);
@@ -201,9 +203,13 @@ describe("importDefaultCards", () => {
 			expect.arrayContaining([
 				{
 					id: "id-0",
-					name: "Card 0",
-					set: "tst",
-					collectorNumber: "0",
+					json: {
+						id: "id-0",
+						name: "Card 0",
+						set: "tst",
+						collector_number: "0",
+						image_uris: { normal: "https://example.com/card-0.jpg" },
+					},
 				},
 			]),
 		);

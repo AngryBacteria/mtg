@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compileCardFormat, parseCardLine } from "./cardFormat.js";
+import { compileTextCardFormat, parseTextCardLine } from "./cardTextParser.js";
 
 describe("compileCardFormat", () => {
 	it.each([
@@ -8,20 +8,20 @@ describe("compileCardFormat", () => {
 		"Card name: {name}",
 		"A set of {collectorNumber} cards: {name}",
 	])("allows card field names in literal text in %s", (format) => {
-		expect(() => compileCardFormat(format)).not.toThrow();
+		expect(() => compileTextCardFormat(format)).not.toThrow();
 	});
 
 	it.each(["{rarity} {name}", "{} {name}", "{Name} {set}"])(
 		"allows the unknown braced text in %s",
 		(format) => {
-			expect(() => compileCardFormat(format)).not.toThrow();
+			expect(() => compileTextCardFormat(format)).not.toThrow();
 		},
 	);
 
 	it.each(["{name", "name}", "{{name}}", "{name}}", "{{name}"])(
 		"rejects malformed braces in %s",
 		(format) => {
-			expect(() => compileCardFormat(format)).toThrow();
+			expect(() => compileTextCardFormat(format)).toThrow();
 		},
 	);
 
@@ -31,17 +31,19 @@ describe("compileCardFormat", () => {
 		"{set}/{set}",
 		"{collectorNumber} {collectorNumber}",
 	])("rejects duplicate fields in %s", (format) => {
-		expect(() => compileCardFormat(format)).toThrow("may only be used once");
+		expect(() => compileTextCardFormat(format)).toThrow(
+			"may only be used once",
+		);
 	});
 
 	it("rejects a format without a field", () => {
-		expect(() => compileCardFormat("literal text only")).toThrow(
+		expect(() => compileTextCardFormat("literal text only")).toThrow(
 			"Format must contain {amount}, {name}, {set}, and/or {collectorNumber}",
 		);
 	});
 
 	it("retains placeholders in their declared order", () => {
-		const compiledFormat = compileCardFormat(
+		const compiledFormat = compileTextCardFormat(
 			"{collectorNumber}: {name} [{set}]",
 		);
 		expect(compiledFormat.fields).toEqual(["collectorNumber", "name", "set"]);
@@ -50,14 +52,14 @@ describe("compileCardFormat", () => {
 	it.each(["", "   ", "{rarity}", "prefix {unknown} suffix"])(
 		"rejects %j when it contains no supported field",
 		(format) => {
-			expect(() => compileCardFormat(format)).toThrow(
+			expect(() => compileTextCardFormat(format)).toThrow(
 				"Format must contain {amount}, {name}, {set}, and/or {collectorNumber}",
 			);
 		},
 	);
 
 	it("exposes a case-insensitive, Unicode-aware regular expression", () => {
-		const { pattern } = compileCardFormat("Karte: {name}");
+		const { pattern } = compileTextCardFormat("Karte: {name}");
 
 		expect(pattern.flags).toContain("i");
 		expect(pattern.flags).toContain("u");
@@ -103,19 +105,47 @@ describe("parseCardLine", () => {
 			},
 		],
 	])("parses an amount from %s", (line, expected) => {
-		const format = compileCardFormat(
+		const format = compileTextCardFormat(
 			"{amount} {name} ({set}) {collectorNumber}",
 		);
 
-		expect(parseCardLine(line, format)).toEqual(expected);
+		expect(parseTextCardLine(line, format)).toEqual(expected);
 	});
 
 	it("parses the requested three-field format", () => {
-		const format = compileCardFormat("{name} ({set}) {collectorNumber}");
-		expect(parseCardLine("Black Lotus (LEA) 232", format)).toEqual({
+		const format = compileTextCardFormat("{name} ({set}) {collectorNumber}");
+		expect(parseTextCardLine("Black Lotus (LEA) 232", format)).toEqual({
 			name: "Black Lotus",
 			set: "LEA",
 			collectorNumber: "232",
+		});
+	});
+
+	it.each([
+		"1 Yoshimaru, Ever Faithful (SLD) 794 *F*",
+		"1 Yoshimaru, Ever Faithful (SLD) 794 *F* signed copy",
+	])("ignores metadata after a terminal collector number in %s", (line) => {
+		const format = compileTextCardFormat(
+			"{amount} {name} ({set}) {collectorNumber}",
+		);
+
+		expect(parseTextCardLine(line, format)).toEqual({
+			amount: "1",
+			name: "Yoshimaru, Ever Faithful",
+			set: "SLD",
+			collectorNumber: "794",
+		});
+	});
+
+	it("ignores metadata after a terminal parenthesized set", () => {
+		const format = compileTextCardFormat("{amount} {name} ({set})");
+
+		expect(
+			parseTextCardLine("1 Yoshimaru, Ever Faithful (SLD) 794 *F*", format),
+		).toEqual({
+			amount: "1",
+			name: "Yoshimaru, Ever Faithful",
+			set: "SLD",
 		});
 	});
 
@@ -132,45 +162,45 @@ describe("parseCardLine", () => {
 			{ set: "MKM", name: "Delney, Streetwise Lookout" },
 		],
 	])("parses %s from %s", (formatText, line, expected) => {
-		expect(parseCardLine(line, compileCardFormat(formatText))).toEqual(
+		expect(parseTextCardLine(line, compileTextCardFormat(formatText))).toEqual(
 			expected,
 		);
 	});
 
 	it("treats regular-expression characters in literals as literal text", () => {
-		const format = compileCardFormat(
+		const format = compileTextCardFormat(
 			"Card.+ [{set}] ({collectorNumber}): {name}",
 		);
 		expect(
-			parseCardLine("Card.+ [woe] (42): Beseech the Mirror", format),
+			parseTextCardLine("Card.+ [woe] (42): Beseech the Mirror", format),
 		).toEqual({
 			set: "woe",
 			collectorNumber: "42",
 			name: "Beseech the Mirror",
 		});
 		expect(
-			parseCardLine("CardZZ [woe] (42): Beseech the Mirror", format),
+			parseTextCardLine("CardZZ [woe] (42): Beseech the Mirror", format),
 		).toBeUndefined();
 	});
 
 	it("allows flexible whitespace and trims captured values", () => {
-		const format = compileCardFormat("{name}   |   {set}");
-		expect(parseCardLine("  Lightning Bolt\t |  \tLEA  ", format)).toEqual({
+		const format = compileTextCardFormat("{name}   |   {set}");
+		expect(parseTextCardLine("  Lightning Bolt\t |  \tLEA  ", format)).toEqual({
 			name: "Lightning Bolt",
 			set: "LEA",
 		});
 	});
 
 	it("matches literal text without regard to case", () => {
-		const format = compileCardFormat("Card: {name}");
-		expect(parseCardLine("card: Mox Pearl", format)).toEqual({
+		const format = compileTextCardFormat("Card: {name}");
+		expect(parseTextCardLine("card: Mox Pearl", format)).toEqual({
 			name: "Mox Pearl",
 		});
 	});
 
 	it("treats unknown braced text as literal text", () => {
-		const format = compileCardFormat("{rarity}: {name}");
-		expect(parseCardLine("{rarity}: Black Lotus", format)).toEqual({
+		const format = compileTextCardFormat("{rarity}: {name}");
+		expect(parseTextCardLine("{rarity}: Black Lotus", format)).toEqual({
 			name: "Black Lotus",
 		});
 	});
@@ -196,18 +226,18 @@ describe("parseCardLine", () => {
 		],
 	])("preserves punctuation and Unicode when parsing %s", (line, expected) => {
 		const format = line.includes("[")
-			? compileCardFormat("{amount} {name} [{set}] {collectorNumber}")
-			: compileCardFormat("{amount} {name} ({set}) {collectorNumber}");
+			? compileTextCardFormat("{amount} {name} [{set}] {collectorNumber}")
+			: compileTextCardFormat("{amount} {name} ({set}) {collectorNumber}");
 
-		expect(parseCardLine(line, format)).toEqual(expected);
+		expect(parseTextCardLine(line, format)).toEqual(expected);
 	});
 
 	it("parses fields independently of their conventional order", () => {
-		const format = compileCardFormat(
+		const format = compileTextCardFormat(
 			"{collectorNumber}/{set}: {name} x{amount}",
 		);
 
-		expect(parseCardLine("232/LEA: Black Lotus x4", format)).toEqual({
+		expect(parseTextCardLine("232/LEA: Black Lotus x4", format)).toEqual({
 			collectorNumber: "232",
 			set: "LEA",
 			name: "Black Lotus",
@@ -230,9 +260,9 @@ describe("parseCardLine", () => {
 	])(
 		"uses literals to delimit adjacent field values for %s",
 		(formatText, line, expected) => {
-			expect(parseCardLine(line, compileCardFormat(formatText))).toEqual(
-				expected,
-			);
+			expect(
+				parseTextCardLine(line, compileTextCardFormat(formatText)),
+			).toEqual(expected);
 		},
 	);
 
@@ -241,7 +271,9 @@ describe("parseCardLine", () => {
 		["{set}/{collectorNumber}", "Modern Horizons/123"],
 		["{name} ({set})", "Black Lotus (Limited Edition Alpha)"],
 	])("rejects whitespace inside non-name fields for %s", (formatText, line) => {
-		expect(parseCardLine(line, compileCardFormat(formatText))).toBeUndefined();
+		expect(
+			parseTextCardLine(line, compileTextCardFormat(formatText)),
+		).toBeUndefined();
 	});
 
 	it.each([
@@ -251,32 +283,34 @@ describe("parseCardLine", () => {
 		["{name} ({set})", "Black Lotus ()"],
 		["{name} #{collectorNumber}", "Black Lotus #"],
 	])("rejects an empty captured field in %s", (formatText, line) => {
-		expect(parseCardLine(line, compileCardFormat(formatText))).toBeUndefined();
+		expect(
+			parseTextCardLine(line, compileTextCardFormat(formatText)),
+		).toBeUndefined();
 	});
 
 	it("requires the entire line to conform to the format", () => {
-		const format = compileCardFormat("Card: {name} [end]");
+		const format = compileTextCardFormat("Card: {name} [end]");
 
 		expect(
-			parseCardLine("prefix Card: Sol Ring [end]", format),
+			parseTextCardLine("prefix Card: Sol Ring [end]", format),
 		).toBeUndefined();
 		expect(
-			parseCardLine("Card: Sol Ring [end] suffix", format),
+			parseTextCardLine("Card: Sol Ring [end] suffix", format),
 		).toBeUndefined();
-		expect(parseCardLine("Card: Sol Ring [end]", format)).toEqual({
+		expect(parseTextCardLine("Card: Sol Ring [end]", format)).toEqual({
 			name: "Sol Ring",
 		});
 	});
 
 	it("reuses a compiled format across successful and failed parses", () => {
-		const format = compileCardFormat("{name} [{set}]");
+		const format = compileTextCardFormat("{name} [{set}]");
 
-		expect(parseCardLine("Sol Ring [CMM]", format)).toEqual({
+		expect(parseTextCardLine("Sol Ring [CMM]", format)).toEqual({
 			name: "Sol Ring",
 			set: "CMM",
 		});
-		expect(parseCardLine("not a card line", format)).toBeUndefined();
-		expect(parseCardLine("Black Lotus [LEA]", format)).toEqual({
+		expect(parseTextCardLine("not a card line", format)).toBeUndefined();
+		expect(parseTextCardLine("Black Lotus [LEA]", format)).toEqual({
 			name: "Black Lotus",
 			set: "LEA",
 		});
@@ -285,8 +319,8 @@ describe("parseCardLine", () => {
 	it.each(["", "   ", "Black Lotus LEA 232", "Black Lotus (LEA)"])(
 		"returns undefined when %j does not match",
 		(line) => {
-			const format = compileCardFormat("{name} ({set}) {collectorNumber}");
-			expect(parseCardLine(line, format)).toBeUndefined();
+			const format = compileTextCardFormat("{name} ({set}) {collectorNumber}");
+			expect(parseTextCardLine(line, format)).toBeUndefined();
 		},
 	);
 });

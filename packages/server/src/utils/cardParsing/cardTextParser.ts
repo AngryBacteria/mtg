@@ -41,10 +41,11 @@ export interface CompiledCardFormat {
 }
 
 /** Converts a placeholder template such as `{amount} {name}` into a card-line matcher. */
-export function compileCardFormat(format: string): CompiledCardFormat {
+export function compileTextCardFormat(format: string): CompiledCardFormat {
 	const fields: CardFieldName[] = [];
 	let pattern = "^\\s*";
 	let literalStart = 0;
+	let lastPlaceholderField: CardFieldName | undefined;
 
 	for (const match of format.matchAll(placeholderPattern)) {
 		const matchIndex = match.index;
@@ -53,6 +54,7 @@ export function compileCardFormat(format: string): CompiledCardFormat {
 		if (!cardFieldNames.includes(placeholder as CardFieldName)) {
 			pattern += formatLiteralAsPattern(match[0]);
 			literalStart = matchIndex + match[0].length;
+			lastPlaceholderField = undefined;
 			continue;
 		}
 		const field = placeholder as CardFieldName;
@@ -63,21 +65,32 @@ export function compileCardFormat(format: string): CompiledCardFormat {
 		fields.push(field);
 		pattern += `(?<${field}>${cardFieldPattern(field)})`;
 		literalStart = matchIndex + match[0].length;
+		lastPlaceholderField = field;
 	}
 
-	pattern += compileLiteral(format.slice(literalStart));
+	const trailingLiteral = format.slice(literalStart);
+	/** Allows source-specific annotations after a collector number at line end. */
+	const hasTerminalCollectorNumber =
+		lastPlaceholderField === "collectorNumber" && trailingLiteral.trim() === "";
+	/** Allows source-specific annotations after a parenthesized set at line end. */
+	const hasTerminalParenthesizedSet =
+		lastPlaceholderField === "set" && trailingLiteral.trim() === ")";
+	pattern += compileLiteral(hasTerminalCollectorNumber ? "" : trailingLiteral);
 	if (fields.length === 0) {
 		throw new Error(
 			"Format must contain {amount}, {name}, {set}, and/or {collectorNumber}",
 		);
 	}
 
+	if (hasTerminalCollectorNumber || hasTerminalParenthesizedSet) {
+		pattern += "(?:\\s+.*)?";
+	}
 	pattern += "\\s*$";
 	return { fields, pattern: new RegExp(pattern, "iu") };
 }
 
 /** Extracts trimmed field values when a line fully matches the compiled template. */
-export function parseCardLine(
+export function parseTextCardLine(
 	line: string,
 	format: CompiledCardFormat,
 ): ParsedCardFields | undefined {
