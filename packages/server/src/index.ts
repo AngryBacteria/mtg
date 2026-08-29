@@ -6,9 +6,17 @@ import {
 	getServerPort,
 } from "./utils/process.js";
 
+/** Network interface used to make the service reachable outside localhost. */
 const SERVER_HOST = "0.0.0.0";
 
-/** Starts the HTTP server and, when configured, imports cards in the background. */
+/**
+ * Starts the HTTP listener and optionally launches the Scryfall import.
+ *
+ * The optional import is intentionally not awaited, allowing API requests while
+ * card data downloads; its rejection is handled and logged independently. A
+ * listener startup failure is logged with its bind address and represented by a
+ * non-zero process exit code rather than rethrown from the module entry point.
+ */
 async function main(): Promise<void> {
 	const server = buildFastifyServer();
 	const port = getServerPort();

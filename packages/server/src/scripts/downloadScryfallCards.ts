@@ -6,8 +6,10 @@ import { db } from "../database/db.js";
 import { cards } from "../database/schema.js";
 import { logger } from "../utils/logger.js";
 
+/** Scryfall metadata endpoint for the current default-card bulk export. */
 const DEFAULT_CARDS_URL = "https://api.scryfall.com/bulk-data/default_cards";
 
+/** Validates metadata needed to locate and describe the compressed card export. */
 const bulkDataSchema = z.object({
 	object: z.literal("bulk_data"),
 	type: z.literal("default_cards"),
@@ -16,8 +18,13 @@ const bulkDataSchema = z.object({
 	compressed_size: z.number(),
 });
 
+/** Validated metadata for one published default-card export. */
 type BulkData = z.infer<typeof bulkDataSchema>;
 
+/**
+ * Validates identity fields required by the database while retaining every
+ * additional Scryfall property in the stored JSON payload.
+ */
 const scryfallCardSchema = z.looseObject({
 	id: z.string(),
 	name: z.string(),
@@ -25,10 +32,19 @@ const scryfallCardSchema = z.looseObject({
 	collector_number: z.string(),
 });
 
-/** Contains a complete Scryfall card record with validated identity fields. */
+/**
+ * Complete Scryfall card record whose database identity fields are guaranteed.
+ * Unknown properties remain available because the schema deliberately uses a
+ * loose object rather than stripping the broader Scryfall payload.
+ */
 export type ScryfallCard = z.infer<typeof scryfallCardSchema>;
 
-/** Returns validated Scryfall download metadata, or logs and skips invalid data. */
+/**
+ * Validates the metadata response required to start a bulk download.
+ *
+ * Invalid data is logged once at the validation boundary and represented as
+ * `undefined`; the import coordinator turns that into a failed operation.
+ */
 function parseBulkData(data: unknown): BulkData | undefined {
 	const result = bulkDataSchema.safeParse(data);
 	if (result.success) {
@@ -42,7 +58,12 @@ function parseBulkData(data: unknown): BulkData | undefined {
 	return undefined;
 }
 
-/** Returns a validated card from one JSONL record, or logs and skips bad input. */
+/**
+ * Parses and validates one JSONL record from Scryfall's bulk export.
+ *
+ * Malformed JSON and records missing required identity fields are recoverable:
+ * they are logged and skipped so one bad line does not abort the full import.
+ */
 export function parseScryfallCard(line: string): ScryfallCard | undefined {
 	try {
 		const result = scryfallCardSchema.safeParse(JSON.parse(line));
@@ -64,7 +85,13 @@ export function parseScryfallCard(line: string): ScryfallCard | undefined {
 	return undefined;
 }
 
-/** Fetches JSON from a URL and rejects unsuccessful HTTP responses. */
+/**
+ * Fetches a JSON resource using the application's identifying user agent.
+ *
+ * @returns The unvalidated decoded response body.
+ * @throws When the network request fails, the response status is unsuccessful,
+ * or the response body cannot be decoded as JSON.
+ */
 async function getJson(url: string): Promise<unknown> {
 	const response = await fetch(url, {
 		headers: {
@@ -82,7 +109,20 @@ async function getJson(url: string): Promise<unknown> {
 	return response.json();
 }
 
-/** Streams Scryfall's default-card file and sends each valid record to a handler. */
+/**
+ * Streams and validates Scryfall's current default-card export.
+ *
+ * The function first discovers the current gzip-compressed JSONL URL, then
+ * decompresses it incrementally rather than buffering the export. Empty and
+ * invalid records are skipped. Valid cards are passed to `handleCard` strictly in
+ * source order, and each asynchronous handler invocation finishes before the next
+ * line is consumed, providing backpressure for database writes.
+ *
+ * @param handleCard - Consumer invoked once for each valid record.
+ * @returns The number of handled cards and Scryfall's export timestamp.
+ * @throws For metadata, network, HTTP, body-stream, decompression, or handler
+ * failures. Individual invalid card records do not reject the operation.
+ */
 export async function downloadAndParseDefaultCards(
 	handleCard: (card: ScryfallCard) => void | Promise<void>,
 ): Promise<{ count: number; updatedAt: string }> {
@@ -132,7 +172,19 @@ export async function downloadAndParseDefaultCards(
 	return result;
 }
 
-/** Downloads Scryfall's default cards and inserts them in database-sized batches. */
+/**
+ * Downloads the current default-card export and persists new printings locally.
+ *
+ * Cards are inserted in batches of 100 to bound memory and statement size. A
+ * final partial batch is flushed after the stream ends. Conflicts on Scryfall ID
+ * are ignored, making repeat imports additive rather than replacing existing
+ * payloads. The returned count is the number of valid records handled, including
+ * IDs already present in the database, not the number of newly inserted rows.
+ *
+ * @returns Scryfall's valid record count and bulk-data update timestamp.
+ * @throws When download, decompression, validation metadata, or a database batch
+ * write fails. Earlier committed batches are not rolled back.
+ */
 export async function importDefaultCards(): Promise<{
 	count: number;
 	updatedAt: string;
@@ -140,7 +192,10 @@ export async function importDefaultCards(): Promise<{
 	logger.info("importDefaultCards: import started");
 	const batch: (typeof cards.$inferInsert)[] = [];
 
-	/** Inserts the queued cards, then empties the batch for subsequent records. */
+	/**
+	 * Atomically claims the queued values and inserts them before accepting another
+	 * streamed record, leaving the shared batch ready for subsequent cards.
+	 */
 	const writeBatch = async (): Promise<void> => {
 		if (batch.length === 0) {
 			return;

@@ -1,6 +1,11 @@
 import type { ParsedCardFields } from "./cardTextParser.js";
 
-/** Parsed card fields that CSV columns may populate for matching and quantities. */
+/**
+ * Card properties that callers may map from source CSV columns.
+ *
+ * The list is shared with request validation so the API and parser accept the
+ * same fields. `amount` is returned to the client but does not constrain lookup.
+ */
 export const searchableCardFields = [
 	"amount",
 	"name",
@@ -8,10 +13,19 @@ export const searchableCardFields = [
 	"collectorNumber",
 ] as const;
 
-/** A database card field that can be populated from a CSV column. */
+/** A card property accepted as the destination of a CSV column mapping. */
 export type SearchableCardField = (typeof searchableCardFields)[number];
 
-/** Parses RFC 4180-style comma-separated data, including escaped and multiline values. */
+/**
+ * Splits CSV source into rows while preserving the text of individual values.
+ *
+ * Commas and line endings inside quoted fields remain part of the value, doubled
+ * quotes are unescaped, and CRLF is treated as one record separator. Whitespace
+ * and empty records are retained here so mapping can apply its own normalization
+ * and report source row numbers accurately.
+ *
+ * @throws When the input ends while a quoted field is still open.
+ */
 function parseCsvRows(csv: string): string[][] {
 	const rows: string[][] = [];
 	let row: string[] = [];
@@ -54,7 +68,20 @@ function parseCsvRows(csv: string): string[][] {
 	return rows;
 }
 
-/** Maps CSV records to card fields using source-column-to-database-field mappings. */
+/**
+ * Converts CSV records into normalized fields used by card matching.
+ *
+ * Mapping keys must exactly match header text; only the first header permits a
+ * UTF-8 BOM, which is removed before lookup. Blank records are ignored, mapped
+ * values are trimmed, and unmapped source columns are discarded. Returned cards
+ * preserve the order of non-blank data records.
+ *
+ * @param csv - RFC 4180-style text whose first record is the header.
+ * @param columnMapping - Source header names mapped to supported card fields.
+ * @returns Parsed fields for each non-blank data record in source order.
+ * @throws When CSV quoting is malformed, the header is absent, a mapped header
+ * is missing, or a non-blank record contains no populated mapped value.
+ */
 export function mapCsvRowsToCardFields(
 	csv: string,
 	columnMapping: Record<string, SearchableCardField>,

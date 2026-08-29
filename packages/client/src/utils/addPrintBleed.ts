@@ -1,10 +1,16 @@
-/** Physical dimensions of the card artwork before its bleed is added. */
+/** Physical card dimensions, in inches, before any printer bleed is added. */
 export interface CardDimensionsInches {
 	width: number;
 	height: number;
 }
 
-/** Details about a processed card image and its inferred print resolution. */
+/**
+ * Describes one lossless PNG produced from a source image.
+ *
+ * Source dimensions refer to the decoded file before cropping; output dimensions
+ * include bleed on every edge. DPI is inferred from the normalized crop and the
+ * configured physical card size rather than read from image metadata.
+ */
 export interface PrintBleedImageResult {
 	file: File;
 	sourceWidth: number;
@@ -16,16 +22,25 @@ export interface PrintBleedImageResult {
 	meetsMinimumDpi: boolean;
 }
 
-/** Controls the physical card size used to infer DPI from pixel dimensions. */
+/**
+ * Overrides the physical card size and resolution threshold used for a batch.
+ * Dimensions are inches; the DPI threshold only controls the result warning and
+ * does not reject or resample low-resolution images.
+ */
 export interface PrintBleedOptions {
 	cardDimensions?: CardDimensionsInches;
 	minimumDpi?: number;
 }
 
-/** Available strategies for filling the area outside the original card image. */
+/** Selects either opaque black bleed or colors extended from the cropped edges. */
 export type PrintBleedMode = "black" | "extend";
 
-/** Per-image bleed settings used when cards in one batch need different treatment. */
+/**
+ * Associates a source file with its per-image rendering rules.
+ *
+ * The inset is measured in whole source pixels from the normalized crop edge and
+ * only affects extended-edge sampling; it never removes or rescales card artwork.
+ */
 export interface PrintBleedImageInput {
 	file: File;
 	mode: PrintBleedMode;
@@ -45,13 +60,13 @@ const MPC_BLEED_PIXELS_AT_300_DPI = 36;
 /** MPC's minimum recommended print resolution. */
 const MPC_MINIMUM_DPI = 300;
 
-/** Result of inferring an image's effective DPI and proportional bleed width. */
+/** Effective print resolution and its corresponding per-edge bleed, in pixels. */
 interface PrintBleedMeasurements {
 	dpi: number;
 	bleedPixelsPerEdge: number;
 }
 
-/** Integer source bounds that normalize an image to its physical card ratio. */
+/** Integer pixel bounds for the centered source crop matching the card ratio. */
 interface CardCropRectangle {
 	x: number;
 	y: number;
@@ -59,13 +74,13 @@ interface CardCropRectangle {
 	height: number;
 }
 
-/** Card dimensions rotated to match the decoded image orientation. */
+/** Physical card dimensions, in inches, rotated to match source orientation. */
 interface OrientedCardDimensions {
 	width: number;
 	height: number;
 }
 
-/** Encoded output and the actual canvas dimensions used to create it. */
+/** Encoded PNG and its bleed-inclusive canvas dimensions, in pixels. */
 interface RenderedPrintBleedImage {
 	file: File;
 	width: number;
@@ -80,6 +95,12 @@ interface RenderedPrintBleedImage {
  * colors from a configurable distance inside its normalized edges. Files are
  * processed sequentially to avoid retaining several large decoded images at
  * once and are returned as lossless PNGs.
+ *
+ * @param images - Files or per-file settings in the order they should be processed.
+ * @param options - Batch-wide physical dimensions and minimum-DPI threshold.
+ * @returns Results in input order; processing stops at the first failed image.
+ * @throws If configuration or per-image settings are invalid, decoding or canvas
+ * rendering fails, or an entry is missing. Image failures include the file name.
  */
 export async function addPrintBleedToImages(
 	images: ArrayLike<File | PrintBleedImageInput>,
@@ -132,7 +153,11 @@ export async function addPrintBleedToImages(
 	return results;
 }
 
-/** Decodes one image, renders its bleed canvas, and releases decoded memory. */
+/**
+ * Decodes and renders one source file, always closing its `ImageBitmap` afterward.
+ * MIME validation is advisory when a browser supplies no file type. The returned
+ * DPI describes the cropped artwork, while output dimensions include bleed.
+ */
 async function addPrintBleedToImage(
 	imageFile: File,
 	cardDimensions: CardDimensionsInches,
@@ -185,6 +210,7 @@ async function addPrintBleedToImage(
 /**
  * Finds the largest centered integer rectangle matching the configured card.
  * Orientation follows the source image so landscape card images remain rotated.
+ * At most one axis is cropped and the other retains its complete pixel extent.
  */
 function calculateCenteredCardCrop(
 	pixelWidth: number,
@@ -249,7 +275,11 @@ function validateImageDimensions(width: number, height: number): void {
 	}
 }
 
-/** Infers square-pixel DPI and scales MPC's 300 DPI bleed requirement. */
+/**
+ * Infers square-pixel DPI from both physical axes and uses the lower value.
+ * MPC's 36-pixel bleed at 300 DPI is scaled proportionally and rounded to the
+ * nearest whole pixel, preserving the intended physical bleed at other DPIs.
+ */
 function calculatePrintBleedMeasurements(
 	pixelWidth: number,
 	pixelHeight: number,
@@ -270,7 +300,11 @@ function calculatePrintBleedMeasurements(
 	return { dpi, bleedPixelsPerEdge };
 }
 
-/** Renders one image with its selected bleed strategy around the original. */
+/**
+ * Renders the normalized crop into an opaque, bleed-inclusive canvas and encodes
+ * it as PNG. The output keeps the source modification timestamp but replaces its
+ * extension; failures to acquire or encode a canvas are propagated to the caller.
+ */
 async function renderImageWithPrintBleed(
 	sourceFile: File,
 	imageBitmap: ImageBitmap,
@@ -328,6 +362,8 @@ async function renderImageWithPrintBleed(
 /**
  * Stretches a sampled pixel row, column, and corner into the bleed area.
  * The optional inset skips unwanted pixels without scaling the card itself.
+ * Insets larger than half an axis are clamped so every one-pixel sample remains
+ * within the cropped source rectangle.
  */
 function drawExtendedEdges(
 	context: CanvasRenderingContext2D,
@@ -466,7 +502,7 @@ function validateEdgeSampleInset(edgeSampleInsetPixels: number): void {
 	}
 }
 
-/** Converts a canvas to a lossless PNG and reports browser encoding failures. */
+/** Converts a canvas asynchronously to lossless PNG and rejects null encodings. */
 function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 	return new Promise((resolve, reject) => {
 		canvas.toBlob((blob) => {
@@ -480,7 +516,10 @@ function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 	});
 }
 
-/** Builds a clearly distinguished PNG name without retaining the source extension. */
+/**
+ * Builds the processed PNG name by removing only a non-leading final extension.
+ * Dotfiles and extensionless names remain intact before `_withEdge.png` is added.
+ */
 export function createPrintBleedFileName(sourceName: string): string {
 	const extensionStart = sourceName.lastIndexOf(".");
 	const baseName =

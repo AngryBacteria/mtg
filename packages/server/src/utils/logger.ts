@@ -1,8 +1,10 @@
 import pino from "pino";
 import { getIsProduction, getLogLevel } from "./process.js";
 
+/** Effective minimum Pino level, with quieter production defaults. */
 const logLevel = getLogLevel() ?? (getIsProduction() ? "info" : "debug");
 
+/** Enables human-readable transport formatting only outside production. */
 const loggerOptions = !getIsProduction()
 	? {
 			transport: {
@@ -15,7 +17,13 @@ const loggerOptions = !getIsProduction()
 		}
 	: {};
 
-/** Emits backend logs at the configured level, with readable output outside production. */
+/**
+ * Shared structured logger for server lifecycle, request, parsing, and import events.
+ *
+ * Production emits machine-readable JSON. Development and test environments use
+ * `pino-pretty`; all records include the validated runtime environment as base
+ * context and respect `LOG_LEVEL` when provided.
+ */
 export const logger = pino({
 	level: logLevel,
 	base: {

@@ -3,7 +3,16 @@ import Fastify from "fastify";
 import { appRouter } from "../routers/router.js";
 import { logger } from "./logger.js";
 
-/** Creates a Fastify server with request logging and the tRPC API mounted at `/trpc`. */
+/**
+ * Creates the configured HTTP server without starting a network listener.
+ *
+ * The returned Fastify instance mounts the root tRPC router at `/trpc`, permits
+ * long encoded route parameters used by batched tRPC requests, and records the
+ * request lifecycle through the shared Pino logger. Fastify's built-in logger is
+ * disabled to avoid duplicate records. Callers own listening and shutdown.
+ *
+ * @returns A Fastify instance ready to be listened on or injected in tests.
+ */
 export function buildFastifyServer() {
 	const fastifyServer = Fastify({
 		logger: false,

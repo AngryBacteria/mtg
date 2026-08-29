@@ -1,13 +1,26 @@
-/** Lists the placeholders that may extract values from an input card line. */
+/** Supported placeholder names and the canonical order used for type inference. */
 const cardFieldNames = ["amount", "collectorNumber", "name", "set"] as const;
+/** A field that a custom decklist format may capture from each input line. */
 type CardFieldName = (typeof cardFieldNames)[number];
 
-/** Maps each field captured from a card line to its trimmed text value. */
+/**
+ * Values extracted from one decklist line before database matching.
+ *
+ * Fields are optional because custom formats may identify cards using any subset.
+ * `amount` is presentation metadata; the remaining fields can constrain lookup.
+ */
 export type ParsedCardFields = Partial<Record<CardFieldName, string>>;
 
+/** Finds brace-delimited placeholders while leaving validation to the compiler. */
 const placeholderPattern = /\{([^{}]*)\}/gu;
 
-/** Returns a lazy capture pattern that allows spaces in names but not in other fields. */
+/**
+ * Returns the capture fragment for a supported field.
+ *
+ * Names may contain whitespace, while quantities, set codes, and collector
+ * numbers are token-like values. Lazy matching lets following format literals
+ * determine capture boundaries.
+ */
 function cardFieldPattern(field: CardFieldName): string {
 	if (field !== "name") {
 		return "\\S+?";
@@ -16,17 +29,24 @@ function cardFieldPattern(field: CardFieldName): string {
 	return ".+?";
 }
 
-/** Escapes regular-expression syntax so a format's literal text matches verbatim. */
+/** Escapes regular-expression metacharacters in user-authored format literals. */
 function escapeRegularExpression(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Turns literal format text into a pattern that tolerates whitespace differences. */
+/**
+ * Compiles literal format text while allowing runs of whitespace to vary.
+ * Punctuation and other regular-expression syntax continue to match verbatim.
+ */
 function formatLiteralAsPattern(value: string): string {
 	return escapeRegularExpression(value).replace(/\s+/g, "\\s+");
 }
 
-/** Rejects braces, escapes regex syntax, and lets whitespace match one or more spaces. */
+/**
+ * Compiles a literal segment and rejects unmatched braces as malformed syntax.
+ *
+ * @throws When the segment contains a brace not consumed as a placeholder.
+ */
 function compileLiteral(value: string): string {
 	if (value.includes("{") || value.includes("}")) {
 		throw new Error("Format contains malformed braces");
@@ -34,13 +54,29 @@ function compileLiteral(value: string): string {
 	return formatLiteralAsPattern(value);
 }
 
-/** Holds an anchored line-matching pattern and the fields it captures in order. */
+/**
+ * Reusable representation of a validated custom decklist format.
+ *
+ * `pattern` matches a complete input line and exposes named capture groups;
+ * `fields` defines which groups must be present and their extraction order.
+ */
 export interface CompiledCardFormat {
 	fields: readonly CardFieldName[];
 	pattern: RegExp;
 }
 
-/** Converts a placeholder template such as `{amount} {name}` into a card-line matcher. */
+/**
+ * Converts a placeholder template into a reusable, case-insensitive line matcher.
+ *
+ * Supported placeholders capture amount, name, set, or collector number. Unknown
+ * placeholders are treated as literal text for compatibility with brace-bearing
+ * source formats, while duplicate supported fields are rejected. Leading and
+ * trailing input whitespace is ignored. A terminal set in parentheses or a
+ * terminal collector number may be followed by source-specific annotations.
+ *
+ * @throws When braces are malformed, no supported placeholder exists, or a
+ * supported field appears more than once.
+ */
 export function compileTextCardFormat(format: string): CompiledCardFormat {
 	const fields: CardFieldName[] = [];
 	let pattern = "^\\s*";
@@ -69,10 +105,10 @@ export function compileTextCardFormat(format: string): CompiledCardFormat {
 	}
 
 	const trailingLiteral = format.slice(literalStart);
-	/** Allows source-specific annotations after a collector number at line end. */
+	/** Whether a trailing collector number may be followed by source annotations. */
 	const hasTerminalCollectorNumber =
 		lastPlaceholderField === "collectorNumber" && trailingLiteral.trim() === "";
-	/** Allows source-specific annotations after a parenthesized set at line end. */
+	/** Whether a trailing parenthesized set may precede source annotations. */
 	const hasTerminalParenthesizedSet =
 		lastPlaceholderField === "set" && trailingLiteral.trim() === ")";
 	pattern += compileLiteral(hasTerminalCollectorNumber ? "" : trailingLiteral);
@@ -89,7 +125,13 @@ export function compileTextCardFormat(format: string): CompiledCardFormat {
 	return { fields, pattern: new RegExp(pattern, "iu") };
 }
 
-/** Extracts trimmed field values when a line fully matches the compiled template. */
+/**
+ * Parses one decklist line using a previously compiled format.
+ *
+ * Every field declared by the format must capture non-whitespace text. Values are
+ * trimmed before return, and a mismatch is represented as `undefined` so callers
+ * can attach input-specific context such as a line number.
+ */
 export function parseTextCardLine(
 	line: string,
 	format: CompiledCardFormat,

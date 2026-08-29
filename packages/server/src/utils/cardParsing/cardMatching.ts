@@ -5,6 +5,15 @@ import type { ParsedCardFields } from "./cardTextParser.js";
 /**
  * Selects the fields used to identify a card, preferring a printing's set and
  * collector number over a potentially source-specific card name.
+ *
+ * When both printing fields are present, all other fields—including `name` and
+ * `amount`—are deliberately removed so a differing localized or decorated name
+ * cannot prevent an exact printing match. Printing fields are trimmed and
+ * lowercased to align with stored Scryfall set codes and case-insensitive
+ * collector-number comparison. Otherwise, supplied fields are retained and only
+ * the printing fields are normalized. The input object is never mutated.
+ *
+ * @returns A new object containing the fields that may constrain lookup.
  */
 export function selectCardIdentityFields(
 	parsedFields: ParsedCardFields,
@@ -28,7 +37,14 @@ export function selectCardIdentityFields(
 	return identityFields;
 }
 
-/** Converts parsed card identity fields into exact database match conditions. */
+/**
+ * Converts parsed identity fields into Drizzle predicates for the cards table.
+ *
+ * Name and set use exact equality. Collector numbers use SQLite's `NOCASE`
+ * collation because suffix letters may vary in case between input sources. The
+ * returned list may be empty when no identity data was supplied; callers decide
+ * how an unconstrained lookup should be handled.
+ */
 export function buildCardConditions(parsedFields: ParsedCardFields): SQL[] {
 	const identityFields = selectCardIdentityFields(parsedFields);
 	const conditions: SQL[] = [];

@@ -1,9 +1,16 @@
 import { initTRPC } from "@trpc/server";
 import { cardsRouter } from "./cards.js";
 
+/** tRPC factory shared by the procedures declared in this root router. */
 const t = initTRPC.create();
 
-/** Combines the backend's card lookup and health-check-style greeting procedures. */
+/**
+ * Root API contract mounted by Fastify at `/trpc`.
+ *
+ * Card parsing and matching procedures are namespaced under `cards`; `greeting`
+ * provides a lightweight connectivity check whose timestamp is generated for
+ * each request.
+ */
 export const appRouter = t.router({
 	cards: cardsRouter,
 	greeting: t.procedure.query(() => ({
@@ -12,5 +19,5 @@ export const appRouter = t.router({
 	})),
 });
 
-/** Describes the complete backend API for end-to-end tRPC type inference. */
+/** Complete backend contract consumed by the client for end-to-end type inference. */
 export type AppRouter = typeof appRouter;

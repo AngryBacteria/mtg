@@ -16,10 +16,18 @@ import { useState } from "react";
 import { trpc } from "../trpc.ts";
 import { logger } from "../utils/logger.ts";
 
+/** Default placeholder layout for one card per line in the text workflow. */
 const DEFAULT_TEXT_FORMAT = "{amount} {name} ({set}) {collectorNumber}";
+
+/** Example input demonstrating the syntax expected by the default text format. */
 const TEXT_DECKLIST_EXAMPLE = "1 Sol Ring (cmm) 396\n2 Island (dmu) 278";
 
-/** Card fields available for exact lookup from CSV columns. */
+/**
+ * Domain fields that users may associate with CSV headers.
+ *
+ * The selected mapping is inverted before submission because the server accepts
+ * source column names as keys and normalized card fields as values.
+ */
 const csvCardFields = [
 	{ label: "Amount", value: "amount" },
 	{ label: "Card name", value: "name" },
@@ -27,30 +35,48 @@ const csvCardFields = [
 	{ label: "Collector number", value: "collectorNumber" },
 ] as const;
 
+/** Normalized card identity or quantity field accepted by the CSV API. */
 type CsvCardField = (typeof csvCardFields)[number]["value"];
+
+/** Minimal printing identity displayed for a database match. */
 type MatchedCard = {
 	id: string;
 	name: string;
 	set: string;
 	collectorNumber: string;
 };
+/**
+ * Primary database match for an input, including selectable alternative
+ * printings and the input position used to preserve submitted ordering.
+ */
 type MatchedCardResult = MatchedCard & {
 	amount?: string;
 	inputIndex: number;
 	otherMatches: MatchedCard[];
 };
+/** Parsed input that could not be resolved to a local card printing. */
 type UnmatchedCardResult = {
 	inputIndex: number;
 	parsedFields: Partial<
 		Record<"amount" | "collectorNumber" | "name" | "set", string>
 	>;
 };
+/** Complete result returned by either server-side decklist parsing workflow. */
 type CardParseResult = {
 	matches: MatchedCardResult[];
 	unmatched: UnmatchedCardResult[];
 };
 
-/** Provides text-template and CSV workflows for matching a decklist to cards. */
+/**
+ * Coordinates the custom-text and CSV workflows for matching decklist entries
+ * against the server's local card database.
+ *
+ * Text input is submitted with its placeholder format. CSV input is first read
+ * locally so the user can map headers to normalized fields, then both the data
+ * and mapping are submitted through tRPC. Starting a request clears stale
+ * results and the other workflow's error; successful results retain server input
+ * indexes so matches and unmatched rows can be identified in their source order.
+ */
 export function DecklistParserPage() {
 	const [textFormat, setTextFormat] = useState(DEFAULT_TEXT_FORMAT);
 	const [textDecklist, setTextDecklist] = useState("");
@@ -94,14 +120,25 @@ export function DecklistParserPage() {
 
 	const activeError = parseTextMutation.error ?? parseCsvMutation.error;
 
-	/** Sends the custom text template and decklist to the card matcher. */
+	/**
+	 * Starts server-side parsing and matching for the current line-based input.
+	 *
+	 * Existing results and CSV errors are cleared before the asynchronous mutation;
+	 * validation and parse failures remain available through the mutation state.
+	 */
 	function parseTextDecklist(): void {
 		setParseResult(null);
 		parseCsvMutation.reset();
 		parseTextMutation.mutate({ cards: textDecklist, format: textFormat });
 	}
 
-	/** Sends CSV text and its selected column mapping to the card matcher. */
+	/**
+	 * Starts server-side parsing and matching for the current CSV input.
+	 *
+	 * The UI stores normalized fields keyed by their selected header. This function
+	 * reverses that relationship into the server contract of CSV header to card
+	 * field, omitting fields the user left unmapped, and clears stale text state.
+	 */
 	function parseCsvDecklist(): void {
 		const columnMapping = Object.fromEntries(
 			Object.entries(csvColumns)
@@ -114,7 +151,15 @@ export function DecklistParserPage() {
 		parseCsvMutation.mutate({ csv: csvDecklist, columnMapping });
 	}
 
-	/** Updates CSV content and derives its header choices for field mapping. */
+	/**
+	 * Replaces the CSV input and derives the header choices used by mapping controls.
+	 *
+	 * Mappings to headers no longer present in the first record are discarded. Any
+	 * previous result or CSV mutation error is also cleared because it describes an
+	 * older version of the source data.
+	 *
+	 * @param csv - Complete pasted or file-loaded CSV text.
+	 */
 	function updateCsvDecklist(csv: string): void {
 		setCsvDecklist(csv);
 		const nextHeaders = parseCsvHeader(csv);
@@ -130,7 +175,15 @@ export function DecklistParserPage() {
 		parseCsvMutation.reset();
 	}
 
-	/** Loads a selected CSV file as text without sending it elsewhere. */
+	/**
+	 * Reads a selected CSV file into the local mapping workflow.
+	 *
+	 * Choosing no file is a no-op. Browser read failures are logged with the file
+	 * name for diagnosis; the previous input remains unchanged and the file content
+	 * is never logged or uploaded until the user explicitly requests parsing.
+	 *
+	 * @param file - Browser-selected CSV file, or `null` when selection is cancelled.
+	 */
 	async function loadCsvFile(file: File | null): Promise<void> {
 		if (!file) return;
 		try {
@@ -253,7 +306,15 @@ export function DecklistParserPage() {
 	);
 }
 
-/** Displays matched cards, quantities, alternatives, and inputs without matches. */
+/**
+ * Presents matched printings and unresolved inputs from one parsing operation.
+ *
+ * The server's first match is displayed by default. When alternatives exist,
+ * selection is tracked by original input index so two identical input lines can
+ * independently choose different printings without mutating the server result.
+ *
+ * @param result - Matches and unmatched inputs produced by either parsing API.
+ */
 function CardResults({ result }: { result: CardParseResult }) {
 	const [selectedCardIds, setSelectedCardIds] = useState<
 		Record<number, string>
@@ -337,7 +398,15 @@ function CardResults({ result }: { result: CardParseResult }) {
 	);
 }
 
-/** Formats available input fields into a concise unmatched-card description. */
+/**
+ * Formats the fields recovered from an unmatched input for user-facing feedback.
+ *
+ * Missing fields are omitted, quantities gain a multiplication marker, and set
+ * codes are parenthesized to mirror the default line-based decklist format.
+ *
+ * @param fields - Any subset of normalized card fields recovered by the parser.
+ * @returns A space-separated description; an empty object produces an empty string.
+ */
 function formatParsedCardFields(
 	fields: UnmatchedCardResult["parsedFields"],
 ): string {
@@ -351,7 +420,20 @@ function formatParsedCardFields(
 		.join(" ");
 }
 
-/** Reads the first RFC 4180-style CSV row for use as mapping choices. */
+/**
+ * Extracts non-empty column names from the first RFC 4180-style CSV record.
+ *
+ * Quoted commas and escaped quotes are decoded, line breaks inside quoted values
+ * remain part of the header, surrounding whitespace is trimmed, and a UTF-8 BOM
+ * is removed from the first column. Parsing stops after the first unquoted line
+ * break because later records cannot contribute mapping choices.
+ *
+ * This lightweight client parser exists only to populate mapping controls; the
+ * server remains responsible for validating and parsing the complete document.
+ *
+ * @param csv - Complete or partial CSV text supplied by the user.
+ * @returns Header names in source order with blank columns removed.
+ */
 function parseCsvHeader(csv: string): string[] {
 	const header: string[] = [];
 	let value = "";

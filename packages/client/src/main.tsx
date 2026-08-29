@@ -8,16 +8,24 @@ import { createRoot } from "react-dom/client";
 import { router } from "./router.tsx";
 import { trpc } from "./trpc.ts";
 
+/** Shared cache used by both direct React Query consumers and tRPC hooks. */
 const queryClient = new QueryClient();
+
+/**
+ * Browser API client that batches tRPC operations through the server's `/trpc`
+ * endpoint. The relative URL allows Vite's development proxy and a colocated
+ * production deployment to use the same client configuration.
+ */
 const trpcClient = trpc.createClient({
 	links: [httpBatchLink({ url: "/trpc" })],
 });
 
-/** Defines application-wide Mantine component defaults and design tokens. */
+/** Application-wide Mantine theme that gives controls a consistent accent color. */
 const theme = createTheme({
 	primaryColor: "teal",
 });
 
+/** DOM mount point provided by the client HTML entry document. */
 const root = document.getElementById("root");
 
 if (!root) {

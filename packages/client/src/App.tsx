@@ -1,13 +1,25 @@
 import { AppShell, Button, Container, Group, Title } from "@mantine/core";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 
-/** Primary navigation destinations shown in the shared application shell. */
+/**
+ * Navigation metadata for the tools exposed by the shared application shell.
+ *
+ * Keeping labels and typed route destinations together ensures every page uses
+ * TanStack Router links while allowing the shell to derive active-button styling
+ * from the current pathname.
+ */
 const navigationItems = [
 	{ label: "Image formatting", to: "/images" },
 	{ label: "Decklist parser", to: "/decklist" },
 ] as const;
 
-/** Renders the application's reusable header, content, and footer layout. */
+/**
+ * Renders the persistent application chrome around the active tool route.
+ *
+ * The component observes only the current pathname so navigation buttons update
+ * their active styling without coupling the shell to page-specific route state.
+ * The nested route selected by TanStack Router is rendered through the outlet.
+ */
 function App() {
 	const currentPath = useRouterState({
 		select: (state) => state.location.pathname,

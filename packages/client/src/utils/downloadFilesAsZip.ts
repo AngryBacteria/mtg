@@ -6,6 +6,12 @@ const ZIP_MIME_TYPE = "application/zip";
 /**
  * Packages files without recompressing their data and starts one browser download.
  * Duplicate file names receive a numeric suffix so no processed image is lost.
+ * Files are read in input order, then `fflate` builds the archive asynchronously.
+ * This function creates a temporary object URL and clicks a temporary DOM anchor.
+ *
+ * @param files - Browser files to place at the archive root.
+ * @param archiveName - File name offered by the browser download prompt.
+ * @throws If the batch is empty, a file cannot be read, or ZIP creation fails.
  */
 export async function downloadFilesAsZip(
 	files: readonly File[],
@@ -32,7 +38,11 @@ export async function downloadFilesAsZip(
 	downloadBlob(archiveBlob, archiveName);
 }
 
-/** Builds the ZIP away from the main browser thread for responsive large batches. */
+/**
+ * Wraps fflate's asynchronous ZIP callback as a promise.
+ * Input buffers are consumed and stored without compression because the processed
+ * PNGs are already compressed; ZIP errors reject the promise unchanged.
+ */
 function createZipArchive(archiveEntries: AsyncZippable): Promise<Uint8Array> {
 	return new Promise((resolve, reject) => {
 		zip(archiveEntries, { consume: true, level: 0 }, (err, archiveBytes) => {
@@ -46,7 +56,11 @@ function createZipArchive(archiveEntries: AsyncZippable): Promise<Uint8Array> {
 	});
 }
 
-/** Returns a collision-free archive path while preserving the file extension. */
+/**
+ * Reserves and returns a collision-free root archive name.
+ * Collisions use `_2`, `_3`, and so on immediately before the final extension;
+ * the supplied set is mutated so later files observe all prior reservations.
+ */
 function createUniqueFileName(
 	requestedName: string,
 	usedFileNames: Set<string>,
@@ -74,7 +88,11 @@ function createUniqueFileName(
 	return candidateName;
 }
 
-/** Creates a temporary object URL and uses it for a browser download. */
+/**
+ * Initiates a browser download through a temporary DOM anchor and object URL.
+ * Revocation is deferred one task so the browser can consume the clicked URL;
+ * the anchor is removed synchronously after the click.
+ */
 function downloadBlob(blob: Blob, fileName: string): void {
 	const objectUrl = URL.createObjectURL(blob);
 	const downloadLink = document.createElement("a");

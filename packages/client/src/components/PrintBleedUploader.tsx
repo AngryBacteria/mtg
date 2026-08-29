@@ -29,19 +29,22 @@ const OUTPUT_ARCHIVE_NAME = "mtg-images-with-edge.zip";
 /** Monotonic identity source for files that may otherwise share all metadata. */
 let nextSelectedImageId = 0;
 
-/** Describes the most recently processed batch for user feedback. */
+/** Counts completed outputs and those below the configured print-DPI threshold. */
 interface ProcessingSummary {
 	processedImageCount: number;
 	lowDpiImageCount: number;
 }
 
-/** Width and height of an image in pixels. */
+/** Pixel dimensions used to label and proportion comparison previews. */
 interface ImagePixelDimensions {
 	width: number;
 	height: number;
 }
 
-/** Pairs a chosen browser file with an identity that stays stable in the list. */
+/**
+ * Holds a selected browser file, stable UI identity, and editable render settings.
+ * The sampling inset is a whole-pixel offset used only by extended-edge mode.
+ */
 interface SelectedImage {
 	id: string;
 	file: File;
@@ -49,7 +52,11 @@ interface SelectedImage {
 	edgeSampleInsetPixels: number;
 }
 
-/** Identifies the selected card and its temporary browser preview URL. */
+/**
+ * State for an original-versus-processed preview.
+ * URLs are component-owned object URLs and must be revoked when replaced, closed,
+ * or unmounted; dimensions are populated after asynchronous processing completes.
+ */
 interface ImagePreview {
 	fileName: string;
 	sourceUrl: string;
@@ -62,7 +69,13 @@ interface ImagePreview {
 }
 
 /**
- * Lets users select many card images, add print bleed, and download one ZIP.
+ * Coordinates the complete browser-only print-bleed workflow.
+ *
+ * Users can append image batches, choose black or extended-edge bleed per file,
+ * inspect an asynchronously rendered comparison, and download all outputs as one
+ * ZIP. Stale preview completions are ignored through request identities, temporary
+ * object URLs are revoked, and batch failures remain visible without clearing the
+ * user's selections or settings.
  */
 export function PrintBleedUploader() {
 	const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
@@ -84,7 +97,7 @@ export function PrintBleedUploader() {
 		};
 	}, []);
 
-	/** Revokes every temporary URL created for the active comparison preview. */
+	/** Revokes and forgets every component-owned URL for the active preview. */
 	function revokePreviewUrls(): void {
 		for (const previewUrl of previewUrlsRef.current) {
 			URL.revokeObjectURL(previewUrl);
@@ -92,7 +105,11 @@ export function PrintBleedUploader() {
 		previewUrlsRef.current.clear();
 	}
 
-	/** Adds valid images from the picker while reporting ignored file types. */
+	/**
+	 * Appends MIME-typed images with stable identities and default black bleed.
+	 * Non-images are omitted as a group and reported to the user; resetting the
+	 * picker permits selecting the same browser file again later.
+	 */
 	function handleImagesSelected(files: File[]): void {
 		const validImages = files.filter((file) => file.type.startsWith("image/"));
 		const newSelectedImages = validImages.map((file) => {
@@ -137,7 +154,10 @@ export function PrintBleedUploader() {
 		setProcessingSummary(null);
 	}
 
-	/** Changes how far inside one full-art image its extended edge is sampled. */
+	/**
+	 * Stores a whole-pixel edge sampling inset for one image.
+	 * Mantine may emit an empty string while editing, which is normalized to zero.
+	 */
 	function handleEdgeSampleInsetChanged(
 		imageId: string,
 		edgeSampleInsetPixels: string | number,
@@ -163,7 +183,11 @@ export function PrintBleedUploader() {
 		setErrorMessage(null);
 	}
 
-	/** Opens an original-versus-processed preview using the image's current settings. */
+	/**
+	 * Opens an original-versus-processed preview using current per-image settings.
+	 * Each request supersedes earlier work: late results are discarded and their
+	 * object URLs revoked. Rendering errors are shown in the modal and logged once.
+	 */
 	async function handlePreviewImage(image: SelectedImage): Promise<void> {
 		previewRequestIdRef.current += 1;
 		const requestId = previewRequestIdRef.current;
@@ -246,7 +270,7 @@ export function PrintBleedUploader() {
 		}
 	}
 
-	/** Closes the active image preview and allows its temporary URL to be freed. */
+	/** Closes the preview, invalidates pending work, and revokes owned object URLs. */
 	function handleClosePreview(): void {
 		previewRequestIdRef.current += 1;
 		setImagePreview(null);
@@ -262,7 +286,12 @@ export function PrintBleedUploader() {
 		resetFileInputRef.current?.();
 	}
 
-	/** Processes every selected image and downloads the results in one archive. */
+	/**
+	 * Sequentially renders the selected batch, then starts one ZIP download.
+	 * A summary counts low-DPI results without rejecting them. Any render, encoding,
+	 * ZIP, or browser-file failure aborts the workflow and becomes user feedback;
+	 * processing state is cleared in all cases.
+	 */
 	async function handleProcessImages(): Promise<void> {
 		if (selectedImages.length === 0) {
 			return;
@@ -567,7 +596,7 @@ export function PrintBleedUploader() {
 	);
 }
 
-/** Formats bytes as a compact, readable size for the selected-file list. */
+/** Formats byte counts using binary thresholds and one decimal place above bytes. */
 function formatFileSize(byteCount: number): string {
 	if (byteCount < 1024) {
 		return `${byteCount} B`;
@@ -580,7 +609,10 @@ function formatFileSize(byteCount: number): string {
 	return `${(byteCount / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Formats pixel dimensions with reduced and decimal width-to-height ratios. */
+/**
+ * Formats pixel dimensions with exact reduced and four-decimal aspect ratios.
+ * Inputs are expected to be positive integer browser image dimensions.
+ */
 function formatImageDimensions(dimensions: ImagePixelDimensions): string {
 	const commonDivisor = greatestCommonDivisor(
 		dimensions.width,
@@ -613,7 +645,7 @@ function calculateComparisonImageWidth(
 	return `${(aspectRatio / widestAspectRatio) * 100}%`;
 }
 
-/** Finds the greatest common divisor of two positive integer dimensions. */
+/** Finds the greatest common divisor of positive integers via Euclid's algorithm. */
 function greatestCommonDivisor(
 	firstValue: number,
 	secondValue: number,
@@ -630,7 +662,7 @@ function greatestCommonDivisor(
 	return dividend;
 }
 
-/** Converts unknown caught values into useful user-facing failure text. */
+/** Preserves ordinary Error messages and supplies safe text for unknown failures. */
 function getErrorMessage(err: unknown): string {
 	return err instanceof Error
 		? err.message

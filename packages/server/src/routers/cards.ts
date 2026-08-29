@@ -16,17 +16,23 @@ import {
 } from "../utils/cardParsing/cardTextParser.js";
 import { logger } from "../utils/logger.js";
 
+/** tRPC factory used to declare the card mutation namespace. */
 const t = initTRPC.create();
 
+/** Validates non-empty custom decklist text and its placeholder format. */
 const parseCardsInputSchema = z.object({
 	cards: z.string().min(1),
 	format: z.string().min(1),
 });
 
-/** Validates database card fields supported by CSV column mappings. */
+/** Keeps API mapping destinations aligned with fields supported by the CSV parser. */
 const searchableCardFieldSchema = z.enum(searchableCardFields);
 
-/** Validates CSV text and its source-column-to-database-field mapping. */
+/**
+ * Validates CSV text and requires at least one source column mapping.
+ * Header existence and record-level CSV rules are validated later by the parser
+ * so those failures can include precise domain error messages.
+ */
 const parseCsvInputSchema = z.object({
 	csv: z.string().min(1),
 	columnMapping: z
@@ -36,21 +42,49 @@ const parseCsvInputSchema = z.object({
 		}),
 });
 
-/** A primary card match accompanied by the remaining matches for the same input. */
+/**
+ * Successful lookup for one submitted entry.
+ *
+ * `inputIndex` points to the original non-blank input order. The first row sorted
+ * by Scryfall ID is the deterministic primary result and all remaining candidates
+ * are retained in `otherMatches`. Amount is copied from input when supplied.
+ */
 type CardSearchResult = typeof cards.$inferSelect & {
 	amount?: string;
 	inputIndex: number;
 	otherMatches: (typeof cards.$inferSelect)[];
 };
 
-/** Describes an input that did not match any card in the local database. */
+/**
+ * Submitted entry with no local database match. The parsed identity is returned
+ * unchanged so the client can explain or correct the failed lookup.
+ */
 type UnmatchedCardResult = {
 	inputIndex: number;
 	parsedFields: ParsedCardFields;
 };
 
-/** Returns matched cards and preserves every input that had no database match. */
-async function findMatchingCards(parsedCards: ParsedCardFields[]) {
+/** Shape returned by both card parsing mutations after local database lookup. */
+type CardMatchingResult = {
+	matches: CardSearchResult[];
+	unmatched: UnmatchedCardResult[];
+};
+
+/**
+ * Resolves parsed decklist entries against the local printing database.
+ *
+ * Lookups run concurrently, but grouping by the `Promise.all` result preserves
+ * original input order. Within each group rows are sorted by Scryfall ID, making
+ * primary selection deterministic; remaining rows become alternatives. Matching
+ * rules come from `buildCardConditions`, including set/collector-number precedence
+ * over name. This function performs database reads and does not mutate its input.
+ *
+ * @param parsedCards - Parsed entries in the same order as submitted non-blank input.
+ * @returns Matched and unmatched groups, each ordered by original input position.
+ */
+async function findMatchingCards(
+	parsedCards: ParsedCardFields[],
+): Promise<CardMatchingResult> {
 	const matchingCardGroups = await Promise.all(
 		parsedCards.map((parsedFields) => {
 			const conditions = buildCardConditions(parsedFields);
@@ -86,7 +120,15 @@ async function findMatchingCards(parsedCards: ParsedCardFields[]) {
 	return { matches, unmatched };
 }
 
-/** Exposes text and CSV parsing procedures that return matching database cards. */
+/**
+ * tRPC procedures for converting text or CSV decklists into local card matches.
+ *
+ * Both mutations validate their transport input, preserve submitted record order,
+ * and return primary, alternative, and unmatched results. Format and CSV parsing
+ * failures become `BAD_REQUEST` responses with source-oriented context; database
+ * failures propagate as server errors. Successful operations log aggregate counts
+ * only, never submitted decklist contents.
+ */
 export const cardsRouter = t.router({
 	parseText: t.procedure
 		.input(parseCardsInputSchema)

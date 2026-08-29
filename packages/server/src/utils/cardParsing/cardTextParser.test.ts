@@ -122,6 +122,81 @@ describe("parseCardLine", () => {
 	});
 
 	it.each([
+		[
+			"1x An Offer You Can't Refuse (snc) 51 [Instant]",
+			{
+				amount: "1",
+				name: "An Offer You Can't Refuse",
+				set: "snc",
+				collectorNumber: "51",
+			},
+		],
+		[
+			"1x Ghyrson Starn, Kelermorph (40k) 124 [Commander{top}]",
+			{
+				amount: "1",
+				name: "Ghyrson Starn, Kelermorph",
+				set: "40k",
+				collectorNumber: "124",
+			},
+		],
+		[
+			"1x Riverglide Pathway // Lavaglide Pathway (znr) 264 [Land]",
+			{
+				amount: "1",
+				name: "Riverglide Pathway // Lavaglide Pathway",
+				set: "znr",
+				collectorNumber: "264",
+			},
+		],
+		[
+			"1x Gut Shot (plst) MM2-117 [Instant]",
+			{
+				amount: "1",
+				name: "Gut Shot",
+				set: "plst",
+				collectorNumber: "MM2-117",
+			},
+		],
+		[
+			"1x Stormcarved Coast (pvow) 265p [Land]",
+			{
+				amount: "1",
+				name: "Stormcarved Coast",
+				set: "pvow",
+				collectorNumber: "265p",
+			},
+		],
+		[
+			"12x Mountain (hop) 161 [Land]",
+			{
+				amount: "12",
+				name: "Mountain",
+				set: "hop",
+				collectorNumber: "161",
+			},
+		],
+		[
+			"1x Defiler of Instinct (dmu) 119 [Maybeboard{noDeck}{noPrice},Creature]",
+			{
+				amount: "1",
+				name: "Defiler of Instinct",
+				set: "dmu",
+				collectorNumber: "119",
+			},
+		],
+	])(
+		"parses an x-suffixed amount and ignores bracketed metadata in %s",
+		(line, expected) => {
+			const format = compileTextCardFormat(
+				"{amount}x {name} ({set}) {collectorNumber}",
+			);
+
+			expect(parseTextCardLine(line, format)).toEqual(expected);
+		},
+	);
+
+	it.each([
 		"1 Yoshimaru, Ever Faithful (SLD) 794 *F*",
 		"1 Yoshimaru, Ever Faithful (SLD) 794 *F* signed copy",
 	])("ignores metadata after a terminal collector number in %s", (line) => {
